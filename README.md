@@ -91,7 +91,8 @@ and calls `take_over_path()` so the subclass *becomes* the resource at the vanil
 later load of that path returns the mod's class. The game builds its own scenes as usual and
 gets the modified behaviour without knowing anything happened.
 
-See [MODDING.md](MODDING.md) to write one.
+A mod can also supply a node the loader adds to the tree, which is how it reaches classes
+the game preloads and therefore cannot have replaced. See [MODDING.md](MODDING.md).
 
 ## What this repo does not contain
 

@@ -83,6 +83,50 @@ Anything the game loads after the loader starts: every scene and every class.
     res://script/class/RewardLabel.gd
 
 
+## When an extension will not work: preloaded scripts
+
+An extension can only win if the class it replaces has not already been loaded. `preload()`
+resolves when the *preloading* script is compiled, so anything an autoload preloads is in the
+resource cache before this loader exists.
+
+The Data autoload here holds:
+
+```gdscript
+const field_scene: PackedScene = preload("res://scene/Field.tscn")
+const lobby_scene: PackedScene = preload("res://scene/Lobby.tscn")
+```
+
+so `res://scene/Field.gd` and `res://scene/Lobby.gd` cannot be extended. `take_over_path()`
+succeeds, the loader logs it, and the subclass is simply never instantiated - the cached
+PackedScene already has the original baked in. Nothing errors. The mod just does nothing,
+which is the worst way for this to fail.
+
+**Use a mod node instead.** Declare one in `mod.cfg`:
+
+```ini
+[mod]
+script="MyMod.gd"
+```
+
+The loader instantiates it and adds it to the tree, so it gets `_process` and can watch nodes
+appear. Then drive the instance rather than replacing the class:
+
+```gdscript
+extends Node
+
+func _ready() -> void:
+    get_tree().node_added.connect(_on_node_added)
+
+func _on_node_added(node: Node) -> void:
+    var script: Script = node.get_script()
+    if script != null and script.resource_path == "res://scene/Field.gd":
+        _field = node        # now call its methods and read its state directly
+```
+
+`mods/auto_slot` does exactly this, and the comment at the top of `AutoSlot.gd` explains why it
+had to stop being an extension. If an extension installs cleanly and has no effect, a preload
+is the first thing to check.
+
 ## What You Cannot Extend
 
 The five autoloads the game registers itself:

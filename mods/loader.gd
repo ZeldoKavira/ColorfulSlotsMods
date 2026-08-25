@@ -169,10 +169,37 @@ func _install_extensions() -> void:
 			continue
 
 		_mods.append(mod_name)
+
+		# A mod can supply a node to be added to the tree. It is the way to do anything that
+		# needs a frame, or that has to watch nodes appear - and the only way to reach a class
+		# the game preloads from one of its own autoloads, which an extension cannot replace
+		# because the preload resolves before this loader exists.
+		var node_script := str(manifest.get_value("mod", "script", ""))
+		if not node_script.is_empty():
+			_install_node(mod_name, node_script)
+
 		if manifest.has_section("extensions"):
 			for target in manifest.get_section_keys("extensions"):
 				_install_one(mod_name, mod_dir, target,
 						str(manifest.get_value("extensions", target, "")))
+
+
+func _install_node(mod_name: String, script_file: String) -> void:
+	var path := "res://mods/%s/%s" % [mod_name, script_file]
+	var script: Script = load(path)
+	if script == null:
+		_log.append("%s: could not load %s" % [mod_name, script_file])
+		return
+
+	var node: Node = script.new()
+	if node == null:
+		_log.append("%s: %s did not produce a node" % [mod_name, script_file])
+		return
+
+	node.name = mod_name
+	# Deferred because this runs from _init, before the tree is ready to take children.
+	add_child.call_deferred(node)
+	_log.append("%s: running %s" % [mod_name, script_file])
 
 
 func _install_one(mod_name: String, mod_dir: String, target: String, script_file: String) -> void:

@@ -260,5 +260,9 @@ func _write_log() -> void:
 	if f == null:
 		return
 	f.store_line("mods: %s" % (", ".join(_mods) if _mods else "none"))
+	# Where user:// actually is, resolved by the engine. Saves anyone hunting for these files
+	# by hand - on Windows it is under AppData, but under Proton it is inside the compatdata
+	# prefix in a directory named "Application Data", which is not where people look first.
+	f.store_line("user data: %s" % OS.get_user_data_dir())
 	for line in _log:
 		f.store_line(line)

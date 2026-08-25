@@ -41,7 +41,12 @@ to `user://mod_loader.log`. Where `user://` actually is depends on the platform:
 | Steam Deck / Proton | `steamapps/compatdata/4526100/pfx/drive_c/users/steamuser/Application Data/Colorful_Slots/` |
 
 On the Deck that is `Application Data`, not `AppData/Roaming` — the latter does not exist in
-the prefix at all, so looking there finds nothing regardless of whether the loader ran.
+the prefix at all, so looking there finds nothing regardless of whether the loader ran. You do
+not have to work it out, though: `mod_loader.log` records the resolved path on its second line.
+
+If auto slot appears to do nothing, set `auto_slot=true` under `[debug]` in `mods/config.cfg`
+and play a round. `user://auto_slot.log` then names the condition stopping it — most often
+simply that no run is in progress, since it only acts on the slot screen itself.
 
 Settings are deliberately not written back next to the game: that folder is often read-only,
 under Program Files or on a Deck, and a toggle that silently fails to persist is worse than

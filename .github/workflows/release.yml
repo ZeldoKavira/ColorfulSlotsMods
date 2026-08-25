@@ -55,7 +55,11 @@ jobs:
           import configparser, pathlib, sys
           bad = 0
           for manifest in pathlib.Path("mods").glob("*/mod.cfg"):
-              cfg = configparser.ConfigParser(comment_prefixes=(';',))
+              # Godot's ConfigFile splits on '=' only and keeps key case. ConfigParser also
+              # splits on ':' and lower-cases, either of which mangles a key like
+              # "res://scene/Field.gd" and reports a failure the game would never see.
+              cfg = configparser.ConfigParser(delimiters=("=",), comment_prefixes=(";",))
+              cfg.optionxform = str
               cfg.read(manifest, encoding="utf-8")
               if not cfg.has_section("extensions"):
                   continue

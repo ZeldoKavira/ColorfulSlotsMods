@@ -26,9 +26,26 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 | **V-sync** | Stated explicitly. No game script touches it, so the project setting is the only thing deciding it. |
 | **Controller bindings** | Adds joypad buttons to the game's existing actions, including tab switching, which is what reaches the slots screen. Keyboard and mouse bindings are untouched. |
 
-Everything is configurable in `mods/config.cfg`, and the parts worth changing mid-game are on
-the `F1` panel. Changes you make in game are saved to `user://mod_settings.cfg` rather than
-back into the game folder, which is often read-only — under Program Files, or on a Deck.
+### Changing things
+
+Use the `F1` panel, or edit **`user://mod_settings.cfg`**.
+
+Do not edit `mods/config.cfg`. It is the *shipped defaults* and is replaced wholesale whenever
+the mod updates, so an edit there disappears silently — and since auto-update is on by default,
+that can happen between setting something and noticing it is gone.
+
+`user://mod_settings.cfg` is layered over those defaults at load and is never touched by an
+update. Only the keys you actually change need to be in it; anything absent falls through, so a
+new default in a later version still reaches you.
+
+```ini
+; user://mod_settings.cfg — only what you want to change
+[auto]
+delay_seconds=0.35
+
+[hotkeys]
+panel_key="Insert"
+```
 
 ## Where settings and logs live
 
@@ -44,8 +61,7 @@ On the Deck that is `Application Data`, not `AppData/Roaming` — the latter doe
 the prefix at all, so looking there finds nothing regardless of whether the loader ran. You do
 not have to work it out, though: `mod_loader.log` records the resolved path on its second line.
 
-If auto slot appears to do nothing, set `auto_slot=true` under `[debug]` in `mods/config.cfg`
-and play a round. `user://auto_slot.log` then names the condition stopping it — most often
+If auto slot appears to do nothing, tick **Log diagnostics** on the `F1` panel and play a round. `user://auto_slot.log` then names the condition stopping it — most often
 simply that no run is in progress, since it only acts on the slot screen itself.
 
 Settings are deliberately not written back next to the game: that folder is often read-only,

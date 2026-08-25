@@ -108,6 +108,12 @@ globals: Data.stat, Setting.focus and so on are all reachable and writable from 
 Use get_setting for anything a player might want to tune, and it can be driven from the F1
 panel instead of a text file.
 
+Read defaults from mods/config.cfg, but never expect an edit there to persist: it is a shipped
+file and an update replaces it. set_setting writes to user://mod_settings.cfg, which is layered
+over the defaults at load and survives updating. If your mod has a setting a person will
+realistically want to change, give it a control on the panel rather than a line in a file they
+will lose.
+
 
 ## Adding New Files
 

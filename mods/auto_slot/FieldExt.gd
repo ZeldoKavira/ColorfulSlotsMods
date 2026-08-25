@@ -23,9 +23,7 @@ var _last_state: String = ""
 
 func _ready() -> void:
 	super()
-	# Read once. This runs every frame otherwise, and a config lookup per frame to decide
-	# whether to log would cost more than the logging.
-	_debug = bool(ModLoader.get_setting("debug", "auto_slot", false))
+	_refresh_debug()
 	_log("Field ready, auto slot extension is live")
 
 
@@ -33,6 +31,10 @@ func _process(delta: float) -> void:
 	super(delta)
 
 	var enabled: bool = bool(ModLoader.get_setting("auto", "enabled", false))
+
+	# Re-read rather than cached at ready, so turning diagnostics on from the panel takes
+	# effect immediately instead of at the next run. It is an in-memory dictionary lookup.
+	_refresh_debug()
 
 	if _debug:
 		# Reported on change rather than on a timer. A run produces a handful of lines that
@@ -64,6 +66,10 @@ func _process(delta: float) -> void:
 
 	_log("using the slot")
 	_coin_use()
+
+
+func _refresh_debug() -> void:
+	_debug = bool(ModLoader.get_setting("debug", "auto_slot", false))
 
 
 func _log(text: String) -> void:

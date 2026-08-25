@@ -185,6 +185,18 @@ func _add_auto_rows() -> void:
 	)
 	_rows.add_child(slider)
 
+	# Exposed here rather than left to a file edit. mods/config.cfg is replaced wholesale when
+	# the mod updates, so a flag set there silently reverts - and the moment it matters most is
+	# exactly when someone is chasing a problem and least wants a second one.
+	var debug_box := CheckBox.new()
+	debug_box.text = "Log diagnostics"
+	debug_box.button_pressed = bool(_loader.get_setting("debug", "auto_slot", false))
+	debug_box.toggled.connect(func(on: bool) -> void:
+		_loader.set_setting("debug", "auto_slot", on)
+		_status.text = "diagnostics %s - user://auto_slot.log" % ("on" if on else "off")
+	)
+	_rows.add_child(_small(debug_box, FONT_BODY))
+
 
 func _set_auto(on: bool, from_hotkey: bool) -> void:
 	_loader.set_setting("auto", "enabled", on)

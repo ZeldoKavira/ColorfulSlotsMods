@@ -32,6 +32,8 @@ var _lobby: Node = null
 var _waited: float = 0.0
 var _restart_waited: float = 0.0
 var _restart_sent: bool = false
+var _leave_after_end: bool = false
+var _leave_waited: float = 0.0
 
 var _debug: bool = false
 var _last_state: String = ""
@@ -125,6 +127,25 @@ func _input(event: InputEvent) -> void:
 		_log("starting a run")
 		get_viewport().set_input_as_handled()
 		_lobby._start()
+	elif wants_start and _can_end_run():
+		# The same button, read by context: it starts a run from the lobby and leaves one from
+		# the slot screen.
+		#
+		# The game has no mid-run exit to the lobby - its Lobby button only appears once the
+		# result screen is up, and jumping straight there would skip the scoring and the save
+		# that _end() performs, losing the run. So this does what holding Exit does: zero the
+		# coins and end the run properly. The result is banked, and _leave_after_end carries on
+		# to the upgrade menu once the result panel appears.
+		_leave_after_end = true
+		_restart_sent = true
+		_leave_waited = 0.0
+		_log("ending the run to return to the upgrade menu")
+		get_viewport().set_input_as_handled()
+		_field.coin = 0
+		var counter: Node = _field.get_node_or_null("%CoinCount")
+		if counter != null:
+			counter.t_float = 0
+		_field._end()
 	elif wants_lobby and _can_leave():
 		# Cancels any pending auto restart. Asking to leave and then being restarted a second
 		# later would be the opposite of what the press meant.
@@ -132,6 +153,17 @@ func _input(event: InputEvent) -> void:
 		_log("returning to the upgrade menu")
 		get_viewport().set_input_as_handled()
 		_field._lobby()
+
+
+func _can_end_run() -> bool:
+	if not is_instance_valid(_field) or _field.end:
+		return false
+	# Not mid-spin. Ending while a roll is resolving would cut across the game's own await
+	# chain, and there is no hurry - the spin takes a moment.
+	if _field.m_use:
+		return false
+	var result := _result_panel()
+	return result == null or not result.visible
 
 
 func _can_leave() -> bool:
@@ -177,6 +209,15 @@ func _process(delta: float) -> void:
 	# result panel in both cases, so the panel is the signal that actually means "run over".
 	var result := _result_panel()
 	if result != null and result.visible:
+		if _leave_after_end:
+			# A short settle, because _end() is still working through its own awaits when the
+			# panel first appears and leaving on the same frame races it.
+			_leave_waited += delta
+			if _leave_waited >= 0.4:
+				_leave_after_end = false
+				_log("returning to the upgrade menu")
+				_field._lobby()
+			return
 		_maybe_restart(delta)
 		return
 

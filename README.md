@@ -22,6 +22,7 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 | **Move between screens** | Top face button (Triangle / Y): starts a run from the lobby, leaves one from the slot screen. Leaving ends the run the way holding Exit does, so the score is banked and saved. |
 | **Back to upgrades** | Right face button (B / Circle) on the result screen, the same thing its Lobby button does. |
 | **Auto restart** | Restarts from the result screen when a run ends, after a readable pause. `F3`, or the lower-left back grip, toggles it. Uses the game's own Retry, so it costs what Retry costs. |
+| **Spin speed** | Up to 10x, on the `F1` panel. Applied only while a spin is resolving, so menus stay at normal speed. |
 | **Settings panel** | `F1`, or the left back grip on a Deck. Lists loaded mods, toggles auto slot, sets the pause between rolls. |
 | **Rebindable** | Both hotkeys take a key name and joypad buttons, in `[hotkeys]`. Defaults are the Deck's upper back grips (16 and 17), which a controller without paddles never reports. |
 | **Borderless fullscreen** | The game requests *exclusive* fullscreen, which switches your display to its own window size and centres the image. This makes it borderless at your native resolution. |

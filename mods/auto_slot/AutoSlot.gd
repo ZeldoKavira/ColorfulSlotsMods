@@ -44,6 +44,10 @@ var _leave_requested: bool = false
 var _leave_after_end: bool = false
 var _leave_waited: float = 0.0
 
+# Engine.time_scale is owned by this script while a spin is resolving and returned to 1.0 the
+# moment one is not. Tracked rather than written every frame so nothing else gets stamped on.
+var _time_scaled: bool = false
+
 var _debug: bool = false
 var _last_state: String = ""
 
@@ -176,7 +180,10 @@ func _in_a_run() -> bool:
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(_field):
+		_restore_speed()
 		return
+
+	_apply_speed()
 
 	var enabled: bool = bool(ModLoader.get_setting("auto", "enabled", false))
 	_refresh_debug()
@@ -230,6 +237,40 @@ func _process(delta: float) -> void:
 
 	_log("using the slot")
 	_field._coin_use()
+
+
+func _apply_speed() -> void:
+	# The spin is not one timer that can simply be shortened - it is a chain of tweens and
+	# awaited timers inside _main_roll, and the reels animate off their own Timer. Engine
+	# time_scale is the one lever that moves all of them together and keeps them in step with
+	# each other, which a per-timer fiddle would not.
+	#
+	# Applied only while a spin is actually resolving, so menus, transitions and the result
+	# screen all run at normal speed. Speeding those up would make the game feel broken rather
+	# than fast.
+	var multiplier: float = clampf(
+		float(ModLoader.get_setting("auto", "spin_speed", 1.0)), 1.0, 10.0)
+
+	var want: bool = multiplier > 1.0 and _field.m_use and not _field.end and not _result_up()
+
+	if want:
+		if not _time_scaled or not is_equal_approx(Engine.time_scale, multiplier):
+			Engine.time_scale = multiplier
+			_time_scaled = true
+	else:
+		_restore_speed()
+
+
+func _restore_speed() -> void:
+	if _time_scaled:
+		Engine.time_scale = 1.0
+		_time_scaled = false
+
+
+func _exit_tree() -> void:
+	# Leaving the game running fast because the mod was unloaded mid-spin would be a nasty way
+	# to find out this existed.
+	_restore_speed()
 
 
 func _try_leave() -> void:

@@ -192,6 +192,30 @@ func _add_auto_rows() -> void:
 	# Exposed here rather than left to a file edit. mods/config.cfg is replaced wholesale when
 	# the mod updates, so a flag set there silently reverts - and the moment it matters most is
 	# exactly when someone is chasing a problem and least wants a second one.
+	# Spin speed. Stepped in halves rather than continuously, because a value you cannot
+	# reproduce from memory is annoying to tune.
+	var speed: float = _loader.get_setting("auto", "spin_speed", 1.0)
+	var speed_label := Label.new()
+	speed_label.text = "Spin speed: %.1fx" % speed
+	_rows.add_child(_small(speed_label, FONT_BODY))
+
+	var speed_slider := HSlider.new()
+	speed_slider.min_value = 1.0
+	speed_slider.max_value = 10.0
+	speed_slider.step = 0.5
+	speed_slider.value = speed
+	speed_slider.value_changed.connect(func(value: float) -> void:
+		speed_label.text = "Spin speed: %.1fx" % value
+		_loader.set_setting("auto", "spin_speed", value)
+		_status.text = "1x is untouched" if is_equal_approx(value, 1.0) else "saved"
+	)
+	_rows.add_child(speed_slider)
+
+	var speed_hint := Label.new()
+	speed_hint.text = "Only while a spin is resolving. Menus stay at normal speed."
+	speed_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rows.add_child(_small(speed_hint, FONT_BODY))
+
 	var restart_box := CheckBox.new()
 	restart_box.text = "Auto restart  (%s)" % OS.get_keycode_string(_restart_key)
 	restart_box.button_pressed = bool(_loader.get_setting("auto", "restart_on_result", false))

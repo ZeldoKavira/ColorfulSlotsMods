@@ -43,6 +43,8 @@ extends Node
 
 const LOG_PATH := "user://mod_loader.log"
 const CONFIG_NAME := "config.cfg"
+# Changed settings live here, not next to the game, which may be read-only.
+const USER_CONFIG := "user://mod_settings.cfg"
 const MANIFEST_NAME := "mod.cfg"
 
 var _log: Array[String] = []
@@ -101,8 +103,20 @@ func _base_dir() -> String:
 # ---------------------------------------------------------------- configuration
 
 func _load_config() -> void:
+	# Shipped defaults, from beside the game.
 	if _config.load(_base_dir().path_join(CONFIG_NAME)) != OK:
 		_log.append("no %s, using defaults" % CONFIG_NAME)
+
+	# Then anything the player has changed, from the writable user directory. Settings are not
+	# saved back next to the game because that folder is often not writable - under Program
+	# Files, or on a Steam Deck - and a toggle that silently fails to persist is worse than one
+	# that is obviously unavailable.
+	var overrides := ConfigFile.new()
+	if overrides.load(USER_CONFIG) == OK:
+		for section in overrides.get_sections():
+			for key in overrides.get_section_keys(section):
+				_config.set_value(section, key, overrides.get_value(section, key))
+		_log.append("player settings loaded from %s" % USER_CONFIG)
 
 
 # ---------------------------------------------------------------- resource packs
@@ -229,7 +243,15 @@ func get_setting(section: String, key: String, default: Variant) -> Variant:
 ## Change a setting and persist it, so the in-game panel does not need anyone to edit a file.
 func set_setting(section: String, key: String, value: Variant) -> void:
 	_config.set_value(section, key, value)
-	_config.save(_base_dir().path_join(CONFIG_NAME))
+
+	# Only the changed values are written, so editing the shipped config.cfg still works and a
+	# mod update does not get overwritten by a stale copy of every default.
+	var overrides := ConfigFile.new()
+	overrides.load(USER_CONFIG)
+	overrides.set_value(section, key, value)
+	var err := overrides.save(USER_CONFIG)
+	if err != OK:
+		_log.append("could not save settings: error %d" % err)
 
 
 func _write_log() -> void:

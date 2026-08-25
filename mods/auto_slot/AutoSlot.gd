@@ -38,6 +38,8 @@ var _last_state: String = ""
 
 var _start_keys: Array[int] = []
 var _start_buttons: Array[int] = []
+var _lobby_keys: Array[int] = []
+var _lobby_buttons: Array[int] = []
 
 
 func _ready() -> void:
@@ -80,6 +82,8 @@ func _remember(node: Node) -> void:
 func _read_hotkeys() -> void:
 	_start_keys = _keys_from(ModLoader.get_setting("hotkeys", "start_run_key", ""))
 	_start_buttons = _ints_from(ModLoader.get_setting("hotkeys", "start_run_buttons", ""))
+	_lobby_keys = _keys_from(ModLoader.get_setting("hotkeys", "to_lobby_key", ""))
+	_lobby_buttons = _ints_from(ModLoader.get_setting("hotkeys", "to_lobby_buttons", ""))
 
 
 func _keys_from(value: Variant) -> Array[int]:
@@ -104,15 +108,37 @@ func _ints_from(value: Variant) -> Array[int]:
 
 func _input(event: InputEvent) -> void:
 	var wants_start := false
+	var wants_lobby := false
+
 	if event is InputEventKey and event.pressed and not event.echo:
-		wants_start = _start_keys.has((event as InputEventKey).keycode)
+		var code: int = (event as InputEventKey).keycode
+		wants_start = _start_keys.has(code)
+		wants_lobby = _lobby_keys.has(code)
 	elif event is InputEventJoypadButton and event.pressed:
-		wants_start = _start_buttons.has((event as InputEventJoypadButton).button_index)
+		var button: int = (event as InputEventJoypadButton).button_index
+		wants_start = _start_buttons.has(button)
+		wants_lobby = _lobby_buttons.has(button)
+	else:
+		return
 
 	if wants_start and _can_start():
 		_log("starting a run")
 		get_viewport().set_input_as_handled()
 		_lobby._start()
+	elif wants_lobby and _can_leave():
+		# Cancels any pending auto restart. Asking to leave and then being restarted a second
+		# later would be the opposite of what the press meant.
+		_restart_sent = true
+		_log("returning to the upgrade menu")
+		get_viewport().set_input_as_handled()
+		_field._lobby()
+
+
+func _can_leave() -> bool:
+	# Only from the result screen, where the game itself offers a Lobby button. Elsewhere this
+	# would abandon a run mid-play on a single press.
+	var result := _result_panel()
+	return result != null and result.visible
 
 
 func _can_start() -> bool:

@@ -18,8 +18,10 @@ extends CanvasLayer
 # Deck's back grips are ideal but are not free on every layout.
 var _panel_key: int = KEY_F1
 var _auto_key: int = KEY_F2
+var _restart_key: int = KEY_F3
 var _panel_buttons: Array[int] = []
 var _auto_buttons: Array[int] = []
+var _restart_buttons: Array[int] = []
 
 const MARGIN := 8
 const FONT_TITLE := 11
@@ -31,6 +33,7 @@ var _root: PanelContainer
 var _rows: VBoxContainer
 var _status: Label
 var _auto_box: CheckBox
+var _restart_box: CheckBox
 var _toast: Label
 
 
@@ -55,6 +58,8 @@ func _read_hotkeys() -> void:
 	_auto_key = _key_from(_loader.get_setting("hotkeys", "auto_key", "F2"), KEY_F2)
 	_panel_buttons = _buttons_from(_loader.get_setting("hotkeys", "panel_buttons", ""))
 	_auto_buttons = _buttons_from(_loader.get_setting("hotkeys", "auto_buttons", ""))
+	_restart_key = _key_from(_loader.get_setting("hotkeys", "restart_key", "F3"), KEY_F3)
+	_restart_buttons = _buttons_from(_loader.get_setting("hotkeys", "restart_buttons", ""))
 
 
 func _key_from(name: Variant, fallback: int) -> int:
@@ -132,8 +137,7 @@ func _build() -> void:
 	margin.add_child(_rows)
 
 	var title := Label.new()
-	title.text = "Mods   %s close   %s auto" % [
-		OS.get_keycode_string(_panel_key), OS.get_keycode_string(_auto_key)]
+	title.text = "Mods   %s close" % OS.get_keycode_string(_panel_key)
 	_rows.add_child(_small(title, FONT_TITLE))
 
 	var mods: Array = _loader.get_loaded_mods() if _loader != null else []
@@ -158,7 +162,7 @@ func _build() -> void:
 
 func _add_auto_rows() -> void:
 	_auto_box = CheckBox.new()
-	_auto_box.text = "Auto slot"
+	_auto_box.text = "Auto slot  (%s)" % OS.get_keycode_string(_auto_key)
 	_auto_box.button_pressed = _loader.get_setting("auto", "enabled", false)
 	_auto_box.toggled.connect(func(on: bool) -> void: _set_auto(on, false))
 	_rows.add_child(_small(_auto_box, FONT_BODY))
@@ -188,6 +192,18 @@ func _add_auto_rows() -> void:
 	# Exposed here rather than left to a file edit. mods/config.cfg is replaced wholesale when
 	# the mod updates, so a flag set there silently reverts - and the moment it matters most is
 	# exactly when someone is chasing a problem and least wants a second one.
+	var restart_box := CheckBox.new()
+	restart_box.text = "Auto restart  (%s)" % OS.get_keycode_string(_restart_key)
+	restart_box.button_pressed = bool(_loader.get_setting("auto", "restart_on_result", false))
+	restart_box.toggled.connect(func(on: bool) -> void: _set_restart(on, false))
+	_rows.add_child(_small(restart_box, FONT_BODY))
+	_restart_box = restart_box
+
+	var restart_hint := Label.new()
+	restart_hint.text = "Retries from the result screen when a run ends."
+	restart_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rows.add_child(_small(restart_hint, FONT_BODY))
+
 	var debug_box := CheckBox.new()
 	debug_box.text = "Log diagnostics"
 	debug_box.button_pressed = bool(_loader.get_setting("debug", "auto_slot", false))
@@ -208,6 +224,16 @@ func _set_auto(on: bool, from_hotkey: bool) -> void:
 		_flash("Auto slot %s" % ("ON" if on else "OFF"))
 
 
+func _set_restart(on: bool, from_hotkey: bool) -> void:
+	_loader.set_setting("auto", "restart_on_result", on)
+	if _restart_box != null and _restart_box.button_pressed != on:
+		# no_signal, so updating the box from the hotkey does not re-enter this.
+		_restart_box.set_pressed_no_signal(on)
+	_status.text = "auto restart %s" % ("on" if on else "off")
+	if from_hotkey:
+		_flash("Auto restart %s" % ("ON" if on else "OFF"))
+
+
 func _flash(text: String) -> void:
 	_toast.text = text
 	_toast.visible = true
@@ -226,15 +252,18 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	var wants_panel := false
 	var wants_auto := false
+	var wants_restart := false
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		var code: int = (event as InputEventKey).keycode
 		wants_panel = _panel_key != 0 and code == _panel_key
 		wants_auto = _auto_key != 0 and code == _auto_key
+		wants_restart = _restart_key != 0 and code == _restart_key
 	elif event is InputEventJoypadButton and event.pressed:
 		var button: int = (event as InputEventJoypadButton).button_index
 		wants_panel = _panel_buttons.has(button)
 		wants_auto = _auto_buttons.has(button)
+		wants_restart = _restart_buttons.has(button)
 	else:
 		return
 
@@ -243,6 +272,9 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif wants_auto:
 		_set_auto(not bool(_loader.get_setting("auto", "enabled", false)), true)
+		get_viewport().set_input_as_handled()
+	elif wants_restart:
+		_set_restart(not bool(_loader.get_setting("auto", "restart_on_result", false)), true)
 		get_viewport().set_input_as_handled()
 
 

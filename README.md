@@ -20,7 +20,7 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 |---|---|
 | **Auto slot** | Uses the slot for you while you have coins. On by default; `F2`, or the right back grip on a Deck, toggles it. |
 | **Start a run** | Top face button (Triangle / Y) in the lobby, instead of reaching for Start. Only fires when the game would allow it. |
-| **Auto restart** | Restarts from the result screen when a run ends, after a readable pause. Uses the game's own Retry, so it costs what Retry costs. |
+| **Auto restart** | Restarts from the result screen when a run ends, after a readable pause. `F3`, or the lower-left back grip, toggles it. Uses the game's own Retry, so it costs what Retry costs. |
 | **Settings panel** | `F1`, or the left back grip on a Deck. Lists loaded mods, toggles auto slot, sets the pause between rolls. |
 | **Rebindable** | Both hotkeys take a key name and joypad buttons, in `[hotkeys]`. Defaults are the Deck's upper back grips (16 and 17), which a controller without paddles never reports. |
 | **Borderless fullscreen** | The game requests *exclusive* fullscreen, which switches your display to its own window size and centres the image. This makes it borderless at your native resolution. |

@@ -1,0 +1,101 @@
+name: release
+
+# Tag driven. Pushing v1.0.0 builds and publishes ColorfulSlotsMods-1.0.0.zip.
+on:
+  push:
+    tags: ["v*"]
+  # Also runs on demand, so the packaging can be checked without cutting a release.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanity-check the sources
+        # There is no compile step for GDScript, so this is the next best thing: catch a file
+        # committed truncated, or with indentation mixed between tabs and spaces, which
+        # silently changes scope rather than failing loudly.
+        run: |
+          python3 - <<'PY'
+          import configparser, pathlib, sys
+
+          bad = 0
+          for f in pathlib.Path("mods").rglob("*.gd"):
+              text = f.read_text(encoding="utf-8")
+              if "extends " not in text:
+                  print(f"::error file={f}::no extends line")
+                  bad = 1
+              for n, line in enumerate(text.splitlines(), 1):
+                  indent = line[: len(line) - len(line.lstrip())]
+                  if chr(9) in indent and " " in indent:
+                      print(f"::error file={f},line={n}::indentation mixes tabs and spaces")
+                      bad = 1
+
+          for f in list(pathlib.Path(".").rglob("*.cfg")):
+              parser = configparser.ConfigParser(strict=True, delimiters=("=",), comment_prefixes=(";",))
+              try:
+                  parser.read(f, encoding="utf-8")
+              except Exception as error:
+                  print(f"::error file={f}::{error}")
+                  bad = 1
+
+          sys.exit(bad)
+          PY
+
+      - name: Every declared extension target must exist
+        # A mod.cfg naming a script the loader will reject is the most likely thing to break
+        # silently, so it is checked here rather than discovered at runtime.
+        run: |
+          python3 - <<'PY'
+          import configparser, pathlib, sys
+          bad = 0
+          for manifest in pathlib.Path("mods").glob("*/mod.cfg"):
+              cfg = configparser.ConfigParser(comment_prefixes=(';',))
+              cfg.read(manifest, encoding="utf-8")
+              if not cfg.has_section("extensions"):
+                  continue
+              for target, script in cfg.items("extensions"):
+                  name = script.strip().strip('"')
+                  path = manifest.parent / name
+                  if not path.exists():
+                      print(f"::error file={manifest}::{name} is missing")
+                      bad = 1
+                      continue
+                  want = 'extends "%s"' % target.strip().strip('"')
+                  if want not in path.read_text(encoding="utf-8"):
+                      print(f"::error file={path}::does not start from {want}")
+                      bad = 1
+          sys.exit(bad)
+          PY
+
+      - name: Build the zip
+        id: build
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || version="dev-${GITHUB_SHA::7}"
+          name="ColorfulSlotsMods-${version}"
+          mkdir -p "build/$name"
+          # Laid out so the zip extracts straight into the game folder beside game.exe.
+          cp -r mods "build/$name/"
+          cp override.cfg README.md MODDING.md LICENSE "build/$name/"
+          (cd "build/$name" && zip -r "../../${name}.zip" .)
+          echo "zip=${name}.zip" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          unzip -l "${name}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ColorfulSlotsMods
+          path: ${{ steps.build.outputs.zip }}
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.build.outputs.zip }}
+          generate_release_notes: true

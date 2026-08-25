@@ -137,14 +137,24 @@ func _process(delta: float) -> void:
 	if _debug:
 		# On change rather than per frame, so a session is a handful of lines that say what
 		# happened instead of hundreds repeating themselves.
-		var state := "enabled=%s end=%s m_use=%s btn_lock=%s coin=%s" % [
-			enabled, _field.end, _field.m_use, Data.btn_lock, _field.coin]
+		var panel := _result_panel()
+		var state := "enabled=%s end=%s m_use=%s btn_lock=%s coin=%s result=%s" % [
+			enabled, _field.end, _field.m_use, Data.btn_lock, _field.coin,
+			"up" if panel != null and panel.visible else ("hidden" if panel != null else "not found")]
 		if state != _last_state:
 			_last_state = state
 			_log(state)
 
-	if _field.end:
+	# Gated on the result panel, not on `end`. The game has two ways out of a run and only one
+	# of them sets that flag: _ending() does, for beating the target score, but _exit() - the
+	# ordinary finish - calls _end() directly and leaves `end` false. _end() is what raises the
+	# result panel in both cases, so the panel is the signal that actually means "run over".
+	var result := _result_panel()
+	if result != null and result.visible:
 		_maybe_restart(delta)
+		return
+
+	if _field.end:
 		return
 
 	if not enabled:
@@ -170,14 +180,19 @@ func _process(delta: float) -> void:
 	_field._coin_use()
 
 
+func _result_panel() -> Node:
+	if not is_instance_valid(_field):
+		return null
+	# The scene marks it as a unique name, but % resolution depends on scene ownership and is
+	# not guaranteed to work from another script, so there is a plain search behind it.
+	var node: Node = _field.get_node_or_null("%Result")
+	if node == null:
+		node = _field.find_child("Result", true, false)
+	return node
+
+
 func _maybe_restart(delta: float) -> void:
 	if _restart_sent or not bool(ModLoader.get_setting("auto", "restart_on_result", false)):
-		return
-
-	# Only once the result panel is actually up. `end` is set a moment before it appears, and
-	# restarting in that gap skips the result entirely.
-	var result: Node = _field.get_node_or_null("%Result")
-	if result == null or not result.visible:
 		return
 
 	# A pause so the result is readable rather than flashing past. Deliberately separate from

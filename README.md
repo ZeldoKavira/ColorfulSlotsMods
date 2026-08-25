@@ -18,9 +18,9 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 
 | | |
 |---|---|
-| **Auto slot** | Uses the slot for you while you have coins. `F2` toggles it. |
-| **Settings panel** | `F1`. Lists loaded mods, toggles auto slot, sets the pause between rolls. |
-| **Rebindable** | Both hotkeys take a key name or joypad buttons, in `[hotkeys]`. On a Steam Deck the back grip buttons are the ones to use — unbound by default, and Godot sees them as joypad buttons 16-19. |
+| **Auto slot** | Uses the slot for you while you have coins. On by default; `F2`, or the right back grip on a Deck, toggles it. |
+| **Settings panel** | `F1`, or the left back grip on a Deck. Lists loaded mods, toggles auto slot, sets the pause between rolls. |
+| **Rebindable** | Both hotkeys take a key name and joypad buttons, in `[hotkeys]`. Defaults are the Deck's upper back grips (16 and 17), which a controller without paddles never reports. |
 | **Borderless fullscreen** | The game requests *exclusive* fullscreen, which switches your display to its own window size and centres the image. This makes it borderless at your native resolution. |
 | **Correct scaling** | The shipped `stretch/scale_mode` is `integer`, which only scales in whole multiples. Set to `fractional` so the image fills the screen. |
 | **V-sync** | Stated explicitly. No game script touches it, so the project setting is the only thing deciding it. |
@@ -29,6 +29,23 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 Everything is configurable in `mods/config.cfg`, and the parts worth changing mid-game are on
 the `F1` panel. Changes you make in game are saved to `user://mod_settings.cfg` rather than
 back into the game folder, which is often read-only — under Program Files, or on a Deck.
+
+## Where settings and logs live
+
+Changes made in game are saved to `user://mod_settings.cfg`, and the loader writes what it did
+to `user://mod_loader.log`. Where `user://` actually is depends on the platform:
+
+| | |
+|---|---|
+| Windows | `%APPDATA%\Colorful_Slots\` |
+| Steam Deck / Proton | `steamapps/compatdata/4526100/pfx/drive_c/users/steamuser/Application Data/Colorful_Slots/` |
+
+On the Deck that is `Application Data`, not `AppData/Roaming` — the latter does not exist in
+the prefix at all, so looking there finds nothing regardless of whether the loader ran.
+
+Settings are deliberately not written back next to the game: that folder is often read-only,
+under Program Files or on a Deck, and a toggle that silently fails to persist is worse than
+one that is obviously unavailable.
 
 ## How it works
 

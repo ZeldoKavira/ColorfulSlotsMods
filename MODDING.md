@@ -122,7 +122,12 @@ for.
 
 There is no console in a release build. The loader writes what it did to:
 
-    %APPDATA%\Colorful_Slots\mod_loader.log
+    Windows          %APPDATA%\Colorful_Slots\mod_loader.log
+    Deck / Proton    steamapps/compatdata/4526100/pfx/drive_c/users/steamuser/
+                     Application Data/Colorful_Slots/mod_loader.log
+
+Note the Proton path is `Application Data`, not `AppData/Roaming` - the latter does not exist
+in the prefix, so checking there finds nothing whether or not the loader ran.
 
 It records every extension installed and every one it refused, with the reason. If a mod does
 nothing, read that file first - a rejected extension is named there.

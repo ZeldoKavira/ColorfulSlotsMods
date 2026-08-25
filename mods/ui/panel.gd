@@ -13,8 +13,13 @@
 
 extends CanvasLayer
 
-const KEY_PANEL := KEY_F1
-const KEY_AUTO := KEY_F2
+# Filled from mods/config.cfg. Nothing is hardcoded, because a binding that collides with
+# play is worse than no binding, and which buttons are free depends on the controller - the
+# Deck's back grips are ideal but are not free on every layout.
+var _panel_key: int = KEY_F1
+var _auto_key: int = KEY_F2
+var _panel_buttons: Array[int] = []
+var _auto_buttons: Array[int] = []
 
 const MARGIN := 8
 const FONT_TITLE := 11
@@ -38,10 +43,38 @@ func _ready() -> void:
 	# the panel would freeze open on any screen that pauses.
 	layer = 128
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_read_hotkeys()
 	_build()
 	_root.visible = false
 	# Re-fit if the window is resized or the player changes the scale in game options.
 	get_viewport().size_changed.connect(_fit)
+
+
+func _read_hotkeys() -> void:
+	_panel_key = _key_from(_loader.get_setting("hotkeys", "panel_key", "F1"), KEY_F1)
+	_auto_key = _key_from(_loader.get_setting("hotkeys", "auto_key", "F2"), KEY_F2)
+	_panel_buttons = _buttons_from(_loader.get_setting("hotkeys", "panel_buttons", ""))
+	_auto_buttons = _buttons_from(_loader.get_setting("hotkeys", "auto_buttons", ""))
+
+
+func _key_from(name: Variant, fallback: int) -> int:
+	# Godot can turn its own key names back into keycodes, so the config can say "F1" rather
+	# than a number nobody can read. An unrecognised name falls back rather than binding
+	# nothing, which would leave the panel unreachable with no clue why.
+	var text := str(name).strip_edges()
+	if text.is_empty():
+		return 0
+	var code := OS.find_keycode_from_string(text)
+	return code if code != 0 else fallback
+
+
+func _buttons_from(value: Variant) -> Array[int]:
+	var out: Array[int] = []
+	for part in str(value).split(",", false):
+		var text := part.strip_edges()
+		if text.is_valid_int():
+			out.append(int(text))
+	return out
 
 
 func _viewport_size() -> Vector2:
@@ -99,7 +132,8 @@ func _build() -> void:
 	margin.add_child(_rows)
 
 	var title := Label.new()
-	title.text = "Mods   F1 close   F2 auto"
+	title.text = "Mods   %s close   %s auto" % [
+		OS.get_keycode_string(_panel_key), OS.get_keycode_string(_auto_key)]
 	_rows.add_child(_small(title, FONT_TITLE))
 
 	var mods: Array = _loader.get_loaded_mods() if _loader != null else []
@@ -178,16 +212,30 @@ func _process(_delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
+	var wants_panel := false
+	var wants_auto := false
+
+	if event is InputEventKey and event.pressed and not event.echo:
+		var code: int = (event as InputEventKey).keycode
+		wants_panel = _panel_key != 0 and code == _panel_key
+		wants_auto = _auto_key != 0 and code == _auto_key
+	elif event is InputEventJoypadButton and event.pressed:
+		var button: int = (event as InputEventJoypadButton).button_index
+		wants_panel = _panel_buttons.has(button)
+		wants_auto = _auto_buttons.has(button)
+	else:
 		return
 
-	match (event as InputEventKey).keycode:
-		KEY_PANEL:
-			_root.visible = not _root.visible
-			if _root.visible:
-				_status.text = ""
-				_fit()
-			get_viewport().set_input_as_handled()
-		KEY_AUTO:
-			_set_auto(not bool(_loader.get_setting("auto", "enabled", false)), true)
-			get_viewport().set_input_as_handled()
+	if wants_panel:
+		_toggle_panel()
+		get_viewport().set_input_as_handled()
+	elif wants_auto:
+		_set_auto(not bool(_loader.get_setting("auto", "enabled", false)), true)
+		get_viewport().set_input_as_handled()
+
+
+func _toggle_panel() -> void:
+	_root.visible = not _root.visible
+	if _root.visible:
+		_status.text = ""
+		_fit()

@@ -20,13 +20,15 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 |---|---|
 | **Auto slot** | Uses the slot for you while you have coins. `F2` toggles it. |
 | **Settings panel** | `F1`. Lists loaded mods, toggles auto slot, sets the pause between rolls. |
+| **Rebindable** | Both hotkeys take a key name or joypad buttons, in `[hotkeys]`. On a Steam Deck the back grip buttons are the ones to use — unbound by default, and Godot sees them as joypad buttons 16-19. |
 | **Borderless fullscreen** | The game requests *exclusive* fullscreen, which switches your display to its own window size and centres the image. This makes it borderless at your native resolution. |
 | **Correct scaling** | The shipped `stretch/scale_mode` is `integer`, which only scales in whole multiples. Set to `fractional` so the image fills the screen. |
 | **V-sync** | Stated explicitly. No game script touches it, so the project setting is the only thing deciding it. |
 | **Controller bindings** | Adds joypad buttons to the game's existing actions, including tab switching, which is what reaches the slots screen. Keyboard and mouse bindings are untouched. |
 
 Everything is configurable in `mods/config.cfg`, and the parts worth changing mid-game are on
-the `F1` panel.
+the `F1` panel. Changes you make in game are saved to `user://mod_settings.cfg` rather than
+back into the game folder, which is often read-only — under Program Files, or on a Deck.
 
 ## How it works
 

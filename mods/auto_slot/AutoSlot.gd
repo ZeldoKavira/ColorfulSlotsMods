@@ -1,7 +1,8 @@
 # Automates the parts of the loop that are just repetition.
 #
 #   - uses the slot for you while you have coins
-#   - a button in the lobby that starts a run without reaching for Start
+#   - the top face button moves between the lobby and a run, in both directions
+#   - the right face button leaves the result screen for the upgrade menu
 #   - restarts from the result screen when a run ends
 #
 #
@@ -26,12 +27,20 @@ extends Node
 const FIELD_SCRIPT := "res://scene/Field.gd"
 const LOBBY_SCRIPT := "res://scene/Lobby.gd"
 
+# How long to let _end() settle before leaving. It is still working through its own awaits
+# when the result panel first appears, and leaving on that frame races it.
+const LEAVE_SETTLE := 0.4
+
 var _field: Node = null
 var _lobby: Node = null
 
 var _waited: float = 0.0
 var _restart_waited: float = 0.0
 var _restart_sent: bool = false
+
+# Leaving happens in two steps, because the press and the moment it can be honoured are rarely
+# the same frame - see _input.
+var _leave_requested: bool = false
 var _leave_after_end: bool = false
 var _leave_waited: float = 0.0
 
@@ -55,7 +64,6 @@ func _ready() -> void:
 
 
 func _find_existing() -> void:
-	# In case a screen is already open - loading a save, or the mod arriving mid-session.
 	for node in get_tree().root.find_children("*", "", true, false):
 		_remember(node)
 
@@ -72,9 +80,12 @@ func _remember(node: Node) -> void:
 		return
 	if script.resource_path == FIELD_SCRIPT:
 		_field = node
-		# A new slot screen means the previous run is over and a restart may be wanted again.
+		# A new slot screen means anything pending from the previous run is stale.
 		_restart_sent = false
 		_restart_waited = 0.0
+		_leave_requested = false
+		_leave_after_end = false
+		_leave_waited = 0.0
 		_log("slot screen opened")
 	elif script.resource_path == LOBBY_SCRIPT:
 		_lobby = node
@@ -106,47 +117,39 @@ func _ints_from(value: Variant) -> Array[int]:
 	return out
 
 
-# ---------------------------------------------------------------- starting a run
+# ---------------------------------------------------------------- input
 
 func _input(event: InputEvent) -> void:
-	var wants_start := false
+	var wants_move := false
 	var wants_lobby := false
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		var code: int = (event as InputEventKey).keycode
-		wants_start = _start_keys.has(code)
+		wants_move = _start_keys.has(code)
 		wants_lobby = _lobby_keys.has(code)
 	elif event is InputEventJoypadButton and event.pressed:
 		var button: int = (event as InputEventJoypadButton).button_index
-		wants_start = _start_buttons.has(button)
+		wants_move = _start_buttons.has(button)
 		wants_lobby = _lobby_buttons.has(button)
 	else:
 		return
 
-	if wants_start and _can_start():
+	if wants_move and _can_start():
 		_log("starting a run")
 		get_viewport().set_input_as_handled()
 		_lobby._start()
-	elif wants_start and _can_end_run():
-		# The same button, read by context: it starts a run from the lobby and leaves one from
-		# the slot screen.
-		#
-		# The game has no mid-run exit to the lobby - its Lobby button only appears once the
-		# result screen is up, and jumping straight there would skip the scoring and the save
-		# that _end() performs, losing the run. So this does what holding Exit does: zero the
-		# coins and end the run properly. The result is banked, and _leave_after_end carries on
-		# to the upgrade menu once the result panel appears.
-		_leave_after_end = true
-		_restart_sent = true
-		_leave_waited = 0.0
-		_log("ending the run to return to the upgrade menu")
+
+	elif wants_move and _in_a_run():
+		# Recorded rather than acted on, and this is the whole reason leaving takes two steps.
+		# The press is nearly always made while a spin is resolving - with auto slot running,
+		# m_use is true most of the time - and acting then would cut across the game's own
+		# await chain. An earlier version refused outright in that state, which meant the
+		# button did nothing on most presses and looked broken.
+		_leave_requested = true
+		_log("leave requested, waiting for the spin to finish")
 		get_viewport().set_input_as_handled()
-		_field.coin = 0
-		var counter: Node = _field.get_node_or_null("%CoinCount")
-		if counter != null:
-			counter.t_float = 0
-		_field._end()
-	elif wants_lobby and _can_leave():
+
+	elif wants_lobby and _result_up():
 		# Cancels any pending auto restart. Asking to leave and then being restarted a second
 		# later would be the opposite of what the press meant.
 		_restart_sent = true
@@ -155,35 +158,21 @@ func _input(event: InputEvent) -> void:
 		_field._lobby()
 
 
-func _can_end_run() -> bool:
-	if not is_instance_valid(_field) or _field.end:
-		return false
-	# Not mid-spin. Ending while a roll is resolving would cut across the game's own await
-	# chain, and there is no hurry - the spin takes a moment.
-	if _field.m_use:
-		return false
-	var result := _result_panel()
-	return result == null or not result.visible
-
-
-func _can_leave() -> bool:
-	# Only from the result screen, where the game itself offers a Lobby button. Elsewhere this
-	# would abandon a run mid-play on a single press.
-	var result := _result_panel()
-	return result != null and result.visible
-
-
 func _can_start() -> bool:
 	if not is_instance_valid(_lobby) or not _lobby.visible:
 		return false
 	# Only when the game itself would allow it. The lobby hides its Start button while a
-	# transition is playing or the run is not ready, and calling _start() through that would
-	# begin a run the game is midway through setting up.
+	# transition is playing, and calling _start() through that would begin a run the game is
+	# midway through setting up.
 	var button: Node = _lobby.get_node_or_null("%Start")
 	return button != null and button.visible
 
 
-# ---------------------------------------------------------------- the slot, and restarting
+func _in_a_run() -> bool:
+	return is_instance_valid(_field) and not _field.end and not _result_up()
+
+
+# ---------------------------------------------------------------- per frame
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(_field):
@@ -196,32 +185,28 @@ func _process(delta: float) -> void:
 		# On change rather than per frame, so a session is a handful of lines that say what
 		# happened instead of hundreds repeating themselves.
 		var panel := _result_panel()
-		var state := "enabled=%s end=%s m_use=%s btn_lock=%s coin=%s result=%s" % [
+		var state := "enabled=%s end=%s m_use=%s btn_lock=%s coin=%s result=%s leave=%s" % [
 			enabled, _field.end, _field.m_use, Data.btn_lock, _field.coin,
-			"up" if panel != null and panel.visible else ("hidden" if panel != null else "not found")]
+			"up" if panel != null and panel.visible else ("hidden" if panel != null else "?"),
+			_leave_requested]
 		if state != _last_state:
 			_last_state = state
 			_log(state)
 
 	# Gated on the result panel, not on `end`. The game has two ways out of a run and only one
-	# of them sets that flag: _ending() does, for beating the target score, but _exit() - the
-	# ordinary finish - calls _end() directly and leaves `end` false. _end() is what raises the
-	# result panel in both cases, so the panel is the signal that actually means "run over".
-	var result := _result_panel()
-	if result != null and result.visible:
-		if _leave_after_end:
-			# A short settle, because _end() is still working through its own awaits when the
-			# panel first appears and leaving on the same frame races it.
-			_leave_waited += delta
-			if _leave_waited >= 0.4:
-				_leave_after_end = false
-				_log("returning to the upgrade menu")
-				_field._lobby()
-			return
-		_maybe_restart(delta)
+	# sets that flag: _ending() does, for beating the target score, but _exit() - the ordinary
+	# finish - calls _end() directly and leaves `end` false. _end() raises the panel in both
+	# cases, so the panel is what actually means "run over".
+	if _result_up():
+		_after_result(delta)
 		return
 
 	if _field.end:
+		return
+
+	# A queued leave takes priority over spinning again.
+	if _leave_requested:
+		_try_leave()
 		return
 
 	if not enabled:
@@ -247,15 +232,37 @@ func _process(delta: float) -> void:
 	_field._coin_use()
 
 
-func _result_panel() -> Node:
-	if not is_instance_valid(_field):
-		return null
-	# The scene marks it as a unique name, but % resolution depends on scene ownership and is
-	# not guaranteed to work from another script, so there is a plain search behind it.
-	var node: Node = _field.get_node_or_null("%Result")
-	if node == null:
-		node = _field.find_child("Result", true, false)
-	return node
+func _try_leave() -> void:
+	# As soon as the game is between spins. Nothing is lost by waiting a few frames.
+	if _field.m_use or Data.btn_lock:
+		return
+
+	# The game has no mid-run exit to the lobby - its Lobby button only appears once the result
+	# screen is up - and going straight there would skip the scoring and the save that _end()
+	# performs, losing the run. So this does what holding Exit does: zero the coins and end the
+	# run properly. _leave_after_end then carries on to the upgrade menu.
+	_leave_requested = false
+	_leave_after_end = true
+	_restart_sent = true
+	_leave_waited = 0.0
+	_log("ending the run to return to the upgrade menu")
+
+	_field.coin = 0
+	var counter: Node = _field.get_node_or_null("%CoinCount")
+	if counter != null:
+		counter.t_float = 0
+	_field._end()
+
+
+func _after_result(delta: float) -> void:
+	if _leave_after_end:
+		_leave_waited += delta
+		if _leave_waited >= LEAVE_SETTLE:
+			_leave_after_end = false
+			_log("returning to the upgrade menu")
+			_field._lobby()
+		return
+	_maybe_restart(delta)
 
 
 func _maybe_restart(delta: float) -> void:
@@ -275,6 +282,22 @@ func _maybe_restart(delta: float) -> void:
 
 
 # ---------------------------------------------------------------- odds and ends
+
+func _result_panel() -> Node:
+	if not is_instance_valid(_field):
+		return null
+	# The scene marks it as a unique name, but % resolution depends on scene ownership and is
+	# not guaranteed to work from another script, so there is a plain search behind it.
+	var node: Node = _field.get_node_or_null("%Result")
+	if node == null:
+		node = _field.find_child("Result", true, false)
+	return node
+
+
+func _result_up() -> bool:
+	var panel := _result_panel()
+	return panel != null and panel.visible
+
 
 func _refresh_debug() -> void:
 	_debug = bool(ModLoader.get_setting("debug", "auto_slot", false))

@@ -243,6 +243,15 @@ func _add_auto_rows() -> void:
 	upgrades_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_rows.add_child(_small(upgrades_hint, FONT_BODY))
 
+	var hud_box := CheckBox.new()
+	hud_box.text = "Show buy-back count"
+	hud_box.button_pressed = bool(_loader.get_setting("upgrades", "show_hud", true))
+	hud_box.toggled.connect(func(on: bool) -> void:
+		_loader.set_setting("upgrades", "show_hud", on)
+		_status.text = "count %s" % ("shown" if on else "hidden")
+	)
+	_rows.add_child(_small(hud_box, FONT_BODY))
+
 	var debug_box := CheckBox.new()
 	debug_box.text = "Log diagnostics"
 	debug_box.button_pressed = bool(_loader.get_setting("debug", "auto_slot", false))

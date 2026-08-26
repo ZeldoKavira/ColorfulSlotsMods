@@ -22,6 +22,7 @@ To uninstall, delete `override.cfg` and the `mods` folder.
 | **Move between screens** | Top face button (Triangle / Y): starts a run from the lobby, leaves one from the slot screen. Leaving ends the run the way holding Exit does, so the score is banked and saved. |
 | **Back to upgrades** | Right face button (B / Circle) on the result screen, the same thing its Lobby button does. |
 | **Auto restart** | Restarts from the result screen when a run ends, after a readable pause. `F3`, or the lower-left back grip, toggles it. Uses the game's own Retry, so it costs what Retry costs. |
+| **Buy-back count** | A small count in the top right of how many upgrade levels are still to come back. Hides itself once you are level with where you were. |
 | **Buy back upgrades** | Remembers what you had and rebuys it as the cash comes in, continuously rather than in one go — an all-in leaves you nothing to spend at the time. Works while the slot screen is up, since it needs no upgrade UI. |
 | **Spin speed** | Up to 10x, on the `F1` panel. Applied only while a spin is resolving, so menus stay at normal speed. |
 | **Settings panel** | `F1`, or the left back grip on a Deck. Lists loaded mods, toggles auto slot, sets the pause between rolls. |

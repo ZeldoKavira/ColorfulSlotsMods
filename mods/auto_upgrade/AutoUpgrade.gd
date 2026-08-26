@@ -42,9 +42,13 @@ var _dirty: bool = false
 var _since_buy: float = 0.0
 var _debug: bool = false
 
+var _hud: Label = null
+var _hud_shown: int = -1
+
 
 func _ready() -> void:
 	_load_targets()
+	_build_hud()
 	# Levels change through this signal, so it is the cheap place to keep the record current
 	# rather than diffing the whole dictionary every frame.
 	if Data.has_signal("upgrade_sig"):
@@ -74,6 +78,8 @@ func _process(delta: float) -> void:
 	if _since_check < CHECK_EVERY:
 		return
 	_since_check = 0.0
+
+	_update_hud()
 
 	if not bool(ModLoader.get_setting("upgrades", "buy_back",
 			ModLoader.get_setting("upgrades", "repurchase_on_prestige", true))):
@@ -191,6 +197,61 @@ func _cost(upg, level: int) -> float:
 	var value: float = upg.reward_value * (level + 1) if upg.increase else upg.reward_value
 	value *= 1.0 - Data.stat.upg_discount
 	return value
+
+
+# ---------------------------------------------------------------- the hud
+
+func _build_hud() -> void:
+	# Its own layer, above the game, and processing while the game pauses itself - the count
+	# is just as relevant on a paused screen.
+	var layer := CanvasLayer.new()
+	layer.layer = 127
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+
+	# A Control parented straight to a CanvasLayer gets stretched to the window rather than to
+	# the game's 640x360 viewport, so a holder absorbs that and the label sits inside it.
+	var holder := Control.new()
+	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(holder)
+
+	_hud = Label.new()
+	_hud.add_theme_font_size_override("font_size", 9)
+	# Outlined, because it sits over whatever the game happens to be drawing and plain text on
+	# a bright reel is unreadable.
+	_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_hud.add_theme_constant_override("outline_size", 4)
+	_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	# Top right, away from the F1 panel in the top left.
+	_hud.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_hud.position = Vector2(-158, 6)
+	_hud.custom_minimum_size = Vector2(150, 0)
+	_hud.visible = false
+	holder.add_child(_hud)
+
+
+func _update_hud() -> void:
+	if _hud == null:
+		return
+
+	if not bool(ModLoader.get_setting("upgrades", "show_hud", true)):
+		_hud.visible = false
+		_hud_shown = -1
+		return
+
+	var left := _outstanding()
+	# Only touched when the number changes, so this is not rewriting a label every quarter
+	# second for the whole session.
+	if left == _hud_shown:
+		return
+	_hud_shown = left
+
+	# Hidden at zero rather than saying "0 left". There is nothing to report when you are back
+	# to where you were, and a permanent label earns nothing.
+	_hud.visible = left > 0
+	if left > 0:
+		_hud.text = "buying back: %d" % left
 
 
 # ---------------------------------------------------------------- odds and ends

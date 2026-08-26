@@ -229,14 +229,19 @@ func _add_auto_rows() -> void:
 	_rows.add_child(_small(restart_hint, FONT_BODY))
 
 	var upgrades_box := CheckBox.new()
-	upgrades_box.text = "Buy back upgrades after all-in"
-	upgrades_box.button_pressed = bool(
-		_loader.get_setting("upgrades", "repurchase_on_prestige", true))
+	upgrades_box.text = "Buy back upgrades"
+	upgrades_box.button_pressed = bool(_loader.get_setting("upgrades", "buy_back",
+		_loader.get_setting("upgrades", "repurchase_on_prestige", true)))
 	upgrades_box.toggled.connect(func(on: bool) -> void:
-		_loader.set_setting("upgrades", "repurchase_on_prestige", on)
+		_loader.set_setting("upgrades", "buy_back", on)
 		_status.text = "buy back %s" % ("on" if on else "off")
 	)
 	_rows.add_child(_small(upgrades_box, FONT_BODY))
+
+	var upgrades_hint := Label.new()
+	upgrades_hint.text = "Rebuys what an all-in cleared, as the cash comes in."
+	upgrades_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rows.add_child(_small(upgrades_hint, FONT_BODY))
 
 	var debug_box := CheckBox.new()
 	debug_box.text = "Log diagnostics"

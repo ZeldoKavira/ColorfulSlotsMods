@@ -1,4 +1,9 @@
-# Remembers which upgrades you have bought, and buys them back after an all-in.
+# Remembers which upgrades you have bought, and buys them back as you can afford them.
+#
+# Buying back is continuous, not a one-shot after an all-in. An all-in zeroes your cash, so
+# there is nothing to spend at the moment it happens - the upgrades have to be bought back
+# gradually, out of what comes in while you roll. So this keeps checking, and buys each level
+# the moment it becomes affordable.
 #
 # It works entirely on Data - Data.upgrade is a plain dictionary of key to level, and the cost
 # of the next level is derivable from the Upg resource. Nothing here touches an UpgradeSlot
@@ -21,9 +26,20 @@ extends Node
 
 const TARGETS_PATH := "user://upgrade_targets.cfg"
 
+# How often to look. Every frame would be wasteful for something that can only change when
+# money does, and a quarter second is far below noticing.
+const CHECK_EVERY := 0.25
+
+# Saving is deferred this long after the last purchase. While cash is coming in quickly the
+# buying comes in bursts, and writing the save file on each one would mean disk writes several
+# times a second for no benefit.
+const SAVE_AFTER := 2.0
+
 var _targets: Dictionary = {}
 var _last_allin: int = -1
-var _pending: bool = false
+var _since_check: float = 0.0
+var _dirty: bool = false
+var _since_buy: float = 0.0
 var _debug: bool = false
 
 
@@ -36,25 +52,36 @@ func _ready() -> void:
 	_remember_levels()
 	_last_allin = Data.allin_count
 	_refresh_debug()
-	_log("auto upgrade ready, tracking %d upgrade(s)" % _targets.size())
+	_log("ready, tracking %d upgrade(s)" % _targets.size())
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_refresh_debug()
 
-	# An all-in is detected by its counter moving. By the time this is noticed the levels are
-	# already reset - _allin() does it synchronously - which is exactly why the targets are
-	# kept as a running record rather than snapshotted when a prestige begins.
+	# Noted for the log only. The buying does not wait for it - it is continuous, and an
+	# all-in is simply the moment the gap between the record and reality opens up.
 	if Data.allin_count != _last_allin:
-		var prestiged := Data.allin_count > _last_allin
+		if Data.allin_count > _last_allin:
+			_log("all-in detected, %d level(s) to buy back" % _outstanding())
 		_last_allin = Data.allin_count
-		if prestiged and bool(ModLoader.get_setting("upgrades", "repurchase_on_prestige", true)):
-			_pending = true
-			_log("all-in detected, will buy back what it can")
 
-	if _pending and not Data.btn_lock:
-		_pending = false
-		_repurchase()
+	if _dirty:
+		_since_buy += delta
+		if _since_buy >= SAVE_AFTER:
+			_flush()
+
+	_since_check += delta
+	if _since_check < CHECK_EVERY:
+		return
+	_since_check = 0.0
+
+	if not bool(ModLoader.get_setting("upgrades", "buy_back",
+			ModLoader.get_setting("upgrades", "repurchase_on_prestige", true))):
+		return
+	if Data.btn_lock:
+		return
+
+	_buy_what_we_can()
 
 
 # ---------------------------------------------------------------- the record
@@ -70,6 +97,14 @@ func _remember_levels() -> void:
 			changed = true
 	if changed:
 		_save_targets()
+
+
+func _outstanding() -> int:
+	var total := 0
+	for key: String in _targets:
+		if Data.upgrade.has(key):
+			total += maxi(0, int(_targets[key]) - Data.upgrade[key])
+	return total
 
 
 func _load_targets() -> void:
@@ -89,38 +124,33 @@ func _save_targets() -> void:
 
 # ---------------------------------------------------------------- buying back
 
-func _repurchase() -> void:
+func _buy_what_we_can() -> void:
 	var bought := 0
-	var spent_cash := 0.0
-	var spent_gold := 0.0
 
 	# Repeated passes, because buying a parent unlocks its children and a single pass would
-	# stop at whatever happened to be reachable at the start.
+	# stop at whatever happened to be reachable when it started.
 	while true:
 		var progress := false
 		for key: String in _targets:
-			var target: int = int(_targets[key])
-			if not Data.upgrade.has(key) or Data.upgrade[key] >= target:
+			if not Data.upgrade.has(key) or not Data.upg_list.has(key):
 				continue
-			if not Data.upg_list.has(key):
+			var level: int = Data.upgrade[key]
+			if level >= int(_targets[key]):
 				continue
 
 			var upg = Data.upg_list[key]
 			if not _available(upg):
 				continue
 
-			var level: int = Data.upgrade[key]
 			var cost := _cost(upg, level)
 			if upg.gold:
 				if Data.gold < cost:
 					continue
 				Data.gold -= cost
-				spent_gold += cost
 			else:
 				if Data.cash < cost:
 					continue
 				Data.cash -= cost
-				spent_cash += cost
 
 			Data.upgrade[key] = level + 1
 			bought += 1
@@ -130,16 +160,22 @@ func _repurchase() -> void:
 			break
 
 	if bought == 0:
-		_log("nothing affordable to buy back")
 		return
 
-	# Once at the end rather than per purchase: ach_check and save are not free, and the UI
-	# only needs telling that something changed.
+	# Emitted straight away so the purchase actually takes effect - upgrade_sig is what
+	# recalculates the player stats - but the save is deferred, since this can fire repeatedly
+	# while cash is flowing.
+	Data.upgrade_sig.emit()
+	_dirty = true
+	_since_buy = 0.0
+	_log("bought back %d level(s), %d still to go" % [bought, _outstanding()])
+
+
+func _flush() -> void:
+	_dirty = false
+	_since_buy = 0.0
 	Data.ach_check()
 	Data.save()
-	Data.upgrade_sig.emit()
-	_log("bought back %d level(s), spending %.0f cash and %.0f gold" % [
-		bought, spent_cash, spent_gold])
 
 
 func _available(upg) -> bool:
@@ -158,6 +194,12 @@ func _cost(upg, level: int) -> float:
 
 
 # ---------------------------------------------------------------- odds and ends
+
+func _exit_tree() -> void:
+	# Anything bought but not yet written would otherwise be lost on the way out.
+	if _dirty:
+		_flush()
+
 
 func _refresh_debug() -> void:
 	_debug = bool(ModLoader.get_setting("debug", "auto_slot", false))

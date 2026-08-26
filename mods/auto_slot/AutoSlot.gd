@@ -31,6 +31,9 @@ const LOBBY_SCRIPT := "res://scene/Lobby.gd"
 # when the result panel first appears, and leaving on that frame races it.
 const LEAVE_SETTLE := 0.4
 
+# Floor between state lines in the log. Events are logged as they happen regardless.
+const STATE_EVERY := 1.0
+
 var _field: Node = null
 var _lobby: Node = null
 
@@ -50,6 +53,7 @@ var _time_scaled: bool = false
 
 var _debug: bool = false
 var _last_state: String = ""
+var _since_state_log: float = 9.0
 
 var _start_keys: Array[int] = []
 var _start_buttons: Array[int] = []
@@ -188,9 +192,11 @@ func _process(delta: float) -> void:
 	var enabled: bool = bool(ModLoader.get_setting("auto", "enabled", false))
 	_refresh_debug()
 
-	if _debug:
-		# On change rather than per frame, so a session is a handful of lines that say what
-		# happened instead of hundreds repeating themselves.
+	_since_state_log += delta
+	if _debug and _since_state_log >= STATE_EVERY:
+		# On change, and at most once a second. At 10x spin speed the state flips several times
+		# per second per coin, and an unattended session buried the events worth reading under
+		# hundreds of thousands of near-identical lines. Events are not rate limited - only this.
 		var panel := _result_panel()
 		var state := "enabled=%s end=%s m_use=%s btn_lock=%s coin=%s result=%s leave=%s" % [
 			enabled, _field.end, _field.m_use, Data.btn_lock, _field.coin,
@@ -198,6 +204,7 @@ func _process(delta: float) -> void:
 			_leave_requested]
 		if state != _last_state:
 			_last_state = state
+			_since_state_log = 0.0
 			_log(state)
 
 	# Gated on the result panel, not on `end`. The game has two ways out of a run and only one
@@ -343,14 +350,42 @@ func _result_up() -> bool:
 func _refresh_debug() -> void:
 	_debug = bool(ModLoader.get_setting("debug", "auto_slot", false))
 
+# Logging is deliberately careful about three things it got wrong before.
+#
+# Its own file: both mods used to write to auto_slot.log, each opening it per line, and the
+# high-frequency writer simply clobbered the occasional one - the upgrade mod's lines never
+# appeared at all.
+#
+# One handle, kept open: reopening per line meant a file open for every state change, which at
+# 10x spin speed is thousands a second.
+#
+# Truncated per session and capped: an unattended session reached 368,000 lines. Diagnostics
+# should be safe to leave switched on.
+const LOG_PATH := "user://auto_slot.log"
+const LOG_MAX_LINES := 4000
+
+var _log_file: FileAccess = null
+var _log_lines: int = 0
+var _log_opened: bool = false
+
 
 func _log(text: String) -> void:
 	if not _debug:
 		return
-	var f := FileAccess.open("user://auto_slot.log", FileAccess.READ_WRITE)
-	if f == null:
-		f = FileAccess.open("user://auto_slot.log", FileAccess.WRITE)
-		if f == null:
-			return
-	f.seek_end()
-	f.store_line(text)
+	if not _log_opened:
+		_log_opened = true
+		# WRITE truncates, so each session starts clean rather than appending forever.
+		_log_file = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+	if _log_file == null:
+		return
+	if _log_lines > LOG_MAX_LINES:
+		return
+	_log_lines += 1
+	if _log_lines > LOG_MAX_LINES:
+		_log_file.store_line("... capped, further lines dropped")
+		_log_file.flush()
+		return
+	_log_file.store_line(text)
+	# Flushed so the file is readable while the game is still running, which is the whole
+	# point of it on a machine being watched over ssh.
+	_log_file.flush()

@@ -56,7 +56,7 @@ func _ready() -> void:
 	_remember_levels()
 	_last_allin = Data.allin_count
 	_refresh_debug()
-	_log("ready, tracking %d upgrade(s)" % _targets.size())
+	_log("tracking %d upgrade(s)" % _targets.size())
 
 
 func _process(delta: float) -> void:
@@ -265,14 +265,42 @@ func _exit_tree() -> void:
 func _refresh_debug() -> void:
 	_debug = bool(ModLoader.get_setting("debug", "auto_slot", false))
 
+# Logging is deliberately careful about three things it got wrong before.
+#
+# Its own file: both mods used to write to auto_slot.log, each opening it per line, and the
+# high-frequency writer simply clobbered the occasional one - the upgrade mod's lines never
+# appeared at all.
+#
+# One handle, kept open: reopening per line meant a file open for every state change, which at
+# 10x spin speed is thousands a second.
+#
+# Truncated per session and capped: an unattended session reached 368,000 lines. Diagnostics
+# should be safe to leave switched on.
+const LOG_PATH := "user://auto_upgrade.log"
+const LOG_MAX_LINES := 4000
+
+var _log_file: FileAccess = null
+var _log_lines: int = 0
+var _log_opened: bool = false
+
 
 func _log(text: String) -> void:
 	if not _debug:
 		return
-	var f := FileAccess.open("user://auto_slot.log", FileAccess.READ_WRITE)
-	if f == null:
-		f = FileAccess.open("user://auto_slot.log", FileAccess.WRITE)
-		if f == null:
-			return
-	f.seek_end()
-	f.store_line("[upgrades] " + text)
+	if not _log_opened:
+		_log_opened = true
+		# WRITE truncates, so each session starts clean rather than appending forever.
+		_log_file = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+	if _log_file == null:
+		return
+	if _log_lines > LOG_MAX_LINES:
+		return
+	_log_lines += 1
+	if _log_lines > LOG_MAX_LINES:
+		_log_file.store_line("... capped, further lines dropped")
+		_log_file.flush()
+		return
+	_log_file.store_line(text)
+	# Flushed so the file is readable while the game is still running, which is the whole
+	# point of it on a machine being watched over ssh.
+	_log_file.flush()
